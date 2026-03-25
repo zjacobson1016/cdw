@@ -1,0 +1,40 @@
+resources:
+  pipelines:
+    cdw_sales_pipeline:
+      name: "[${bundle.target}] CDW Sales Forecast Pipeline"
+      catalog: ${var.catalog}
+      target: ${var.schema}
+      libraries:
+        - file:
+            path: ../src/pipeline/bronze/bronze_sales_reps.sql
+        - file:
+            path: ../src/pipeline/bronze/bronze_customers.sql
+        - file:
+            path: ../src/pipeline/bronze/bronze_invoices.sql
+        - file:
+            path: ../src/pipeline/bronze/bronze_orders.sql
+        - file:
+            path: ../src/pipeline/bronze/bronze_deals.sql
+        - file:
+            path: ../src/pipeline/silver/silver_sales_reps.sql
+        - file:
+            path: ../src/pipeline/silver/silver_customers.sql
+        - file:
+            path: ../src/pipeline/silver/silver_invoices.sql
+        - file:
+            path: ../src/pipeline/silver/silver_orders.sql
+        - file:
+            path: ../src/pipeline/silver/silver_deals.sql
+        - file:
+            path: ../src/pipeline/gold/gold_rep_monthly_summary.sql
+        - file:
+            path: ../src/pipeline/gold/gold_active_deals.sql
+        - file:
+            path: ../src/pipeline/gold/gold_invoice_details.sql
+        - file:
+            path: ../src/pipeline/gold/gold_category_summary.sql
+      channel: PREVIEW
+      serverless: true
+      permissions:
+        - level: CAN_VIEW
+          group_name: "users"

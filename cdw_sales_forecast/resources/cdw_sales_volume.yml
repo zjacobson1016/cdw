@@ -1,0 +1,7 @@
+resources:
+  volumes:
+    cdw_raw_data:
+      catalog_name: ${var.catalog}
+      schema_name: ${var.schema}
+      name: "raw_data"
+      volume_type: "MANAGED"

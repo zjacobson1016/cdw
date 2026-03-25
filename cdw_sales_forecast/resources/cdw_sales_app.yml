@@ -1,0 +1,6 @@
+resources:
+  apps:
+    cdw_sales_app:
+      name: cdw-sales-forecast-${bundle.target}
+      description: "CDW Corp Sales Forecast App — invoicing, pipeline, and forecast management"
+      source_code_path: ../src/app

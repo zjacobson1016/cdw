@@ -1,0 +1,38 @@
+bundle:
+  name: cdw_sales_forecast
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog name for pipeline output
+    default: "mfg_mc_se_sa"
+  schema:
+    description: Schema name for pipeline output
+    default: "sales_forecast"
+  warehouse_id:
+    description: SQL Warehouse ID for queries
+    lookup:
+      warehouse: "Serverless Starter Warehouse"
+  lakebase_instance:
+    description: Lakebase instance name for the app
+    default: "cdw-sales-lakebase"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      profile: group-demo
+    variables:
+      catalog: "mfg_mc_se_sa"
+      schema: "cdw_sales_forecast"
+
+  prod:
+    mode: production
+    workspace:
+      profile: group-demo
+    variables:
+      catalog: "mfg_mc_se_sa"
+      schema: "cdw_sales_forecast"
