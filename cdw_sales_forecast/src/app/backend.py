@@ -1,7 +1,9 @@
 """Backend abstraction — Lakebase (real) or in-memory mock for local dev."""
 import os
 import json
+import uuid
 from datetime import datetime
+from decimal import Decimal
 
 USE_MOCK = os.getenv("USE_MOCK_BACKEND", "true").lower() == "true"
 
@@ -13,23 +15,55 @@ def get_backend():
 
 
 # ---------------------------------------------------------------------------
-# Lakebase Backend (production)
+# Lakebase Backend (production) — uses Databricks SDK for autoscaling Lakebase
 # ---------------------------------------------------------------------------
+LAKEBASE_DATABASE_NAME = os.getenv("LAKEBASE_DATABASE_NAME", "databricks_postgres")
+LAKEBASE_ENDPOINT = os.getenv(
+    "LAKEBASE_ENDPOINT",
+    "projects/cdw-sales-forecast/branches/production/endpoints/primary",
+)
+LAKEBASE_HOST = os.getenv(
+    "LAKEBASE_HOST",
+    "ep-broad-firefly-d2lmogie.database.us-east-1.cloud.databricks.com",
+)
+
+
 class LakebaseBackend:
     def __init__(self):
-        import psycopg2
-        self._conn = psycopg2.connect(
-            host=os.getenv("PGHOST"),
-            database=os.getenv("PGDATABASE"),
-            user=os.getenv("PGUSER"),
-            password=os.getenv("PGPASSWORD"),
-            port=os.getenv("PGPORT", "5432"),
-        )
+        from databricks.sdk import WorkspaceClient
+
+        self._w = WorkspaceClient(client_id=os.environ.get("DATABRICKS_CLIENT_ID", ""), client_secret=os.environ.get("DATABRICKS_CLIENT_SECRET", ""))
+        self._username = self._w.current_user.me().user_name
+
+        self._conn = self._connect()
         self._ensure_app_tables()
+
+    def _connect(self):
+        import psycopg
+
+        cred = self._w.postgres.generate_database_credential(endpoint=LAKEBASE_ENDPOINT)
+        conn_str = (
+            f"host={LAKEBASE_HOST} "
+            f"dbname={LAKEBASE_DATABASE_NAME} "
+            f"user={self._username} "
+            f"password={cred.token} "
+            f"sslmode=require"
+        )
+        return psycopg.connect(conn_str)
+
+    def _get_conn(self):
+        """Return the active connection, reconnecting with a fresh token if stale."""
+        try:
+            self._conn.execute("SELECT 1")
+            return self._conn
+        except Exception:
+            self._conn = self._connect()
+            return self._conn
 
     def _ensure_app_tables(self):
         """Create app-specific tables for feedback and overrides (not synced from gold)."""
-        with self._conn.cursor() as cur:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS sales_feedback (
                     id SERIAL PRIMARY KEY,
@@ -52,13 +86,24 @@ class LakebaseBackend:
                     approved_by VARCHAR(200)
                 );
             """)
-            self._conn.commit()
+            conn.commit()
+
+    @staticmethod
+    def _coerce(val):
+        """Convert Decimal to float so the rest of the app can use plain arithmetic."""
+        if isinstance(val, Decimal):
+            return float(val)
+        return val
 
     def _query(self, sql, params=None):
-        with self._conn.cursor() as cur:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
             cur.execute(sql, params)
             columns = [d[0] for d in cur.description]
-            return [dict(zip(columns, row)) for row in cur.fetchall()]
+            return [
+                {c: self._coerce(v) for c, v in zip(columns, row)}
+                for row in cur.fetchall()
+            ]
 
     def _build_filter(self, rep_id=None, region=None):
         clauses, params = [], []
@@ -108,15 +153,16 @@ class LakebaseBackend:
         return self._query("SELECT * FROM gold_category_summary ORDER BY month_date")
 
     def save_feedback(self, feedback):
-        with self._conn.cursor() as cur:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO sales_feedback (rep_id, rep_name, submitted_at, confidence, risks, upside, notes, adjustments)
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                 (feedback["rep_id"], feedback["rep_name"], feedback["submitted_at"],
                  feedback["confidence"], feedback["risks"], feedback["upside"],
-                 feedback["notes"], json.dumps(feedback["adjustments"])),
+                 feedback["notes"], json.dumps(feedback["adjustments"], default=float)),
             )
-            self._conn.commit()
+            conn.commit()
 
     def get_all_feedback(self, rep_id=None):
         if rep_id:
@@ -129,13 +175,14 @@ class LakebaseBackend:
         return rows
 
     def save_manager_override(self, override):
-        with self._conn.cursor() as cur:
+        conn = self._get_conn()
+        with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO manager_overrides (manager_override_pct, manager_notes, approved_at, approved_by) VALUES (%s, %s, %s, %s)",
                 (override["manager_override_pct"], override["manager_notes"],
                  override["approved_at"], override["approved_by"]),
             )
-            self._conn.commit()
+            conn.commit()
 
 
 # ---------------------------------------------------------------------------

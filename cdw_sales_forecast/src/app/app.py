@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="CDW Sales Forecast",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_config="expanded",
+    initial_sidebar_state="expanded",
 )
 
 # ---------------------------------------------------------------------------
@@ -287,7 +287,8 @@ elif page == "👔 Manager Review":
         st.stop()
 
     for fb in feedback_list:
-        with st.expander(f"📋 {fb['rep_name']} — submitted {fb['submitted_at'][:10]}", expanded=False):
+        ts = str(fb['submitted_at'])
+        with st.expander(f"📋 {fb['rep_name']} — submitted {ts[:10]}", expanded=False):
             col1, col2, col3 = st.columns(3)
             with col1:
                 confidence_color = {"Very Low": "🔴", "Low": "🟠", "Medium": "🟡", "High": "🟢", "Very High": "🟣"}
@@ -297,7 +298,7 @@ elif page == "👔 Manager Review":
                 direction = "↑" if adj_total >= 0 else "↓"
                 st.markdown(f"**Net Adjustment:** {direction} {fmt_currency(abs(adj_total))}")
             with col3:
-                st.markdown(f"**Submitted:** {fb['submitted_at'][:16]}")
+                st.markdown(f"**Submitted:** {ts[:16]}")
 
             if fb.get("risks"):
                 st.markdown(f"**Risks:** {fb['risks']}")
